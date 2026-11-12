@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic Tac Toe — Modern Edition</title>
+    <!-- Tailwind CSS for responsive layout & utilities -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+    <!-- Tone.js for procedural Web Audio sound effects (zero external URLs) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: rgba(30, 41, 59, 0.75);
+            --border-color: rgba(148, 163, 184, 0.15);
+            --x-color: #38bdf8;
+            --x-glow: rgba(56, 189, 248, 0.35);
+            --o-color: #f43f5e;
+            --o-glow: rgba(244, 63, 94, 0.35);
+            --win-gold: #fbbf24;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 85% 85%, rgba(244, 63, 94, 0.12) 0%, transparent 45%);
+            color: #f8fafc;
+            min-height: 100vh;
+            overflow-x: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        h1, .font-display {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        /* Glassmorphism Card */
+        .glass-panel {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+        }
+
+        /* Mode Toggle Pill Animation */
+        .mode-pill-bg {
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* Board Cell Styling & Animations */
+        .board-cell {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+            position: relative;
+            aspect-ratio: 1 / 1;
+        }
+
+        .board-cell:not(.occupied):not(.game-over):hover {
+            background: rgba(51, 65, 85, 0.65);
+            border-color: rgba(148, 163, 184, 0.35);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.35);
+        }
+
+        .board-cell:not(.occupied):not(.game-over):active {
+            transform: scale(0.95);
+        }
+
+        /* Ghost preview on hover */
+        .board-cell:not(.occupied):not(.game-over)::after {
+            content: attr(data-preview);
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 800;
+            font-size: clamp(2rem, 8vw, 3.25rem);
+            opacity: 0;
+            transition: opacity 0.18s ease;
+            pointer-events: none;
+        }
+
+        .board-cell[data-preview="X"]:not(.occupied):not(.game-over):hover::after {
+            color: var(--x-color);
+            opacity: 0.22;
+        }
+
+        .board-cell[data-preview="O"]:not(.occupied):not(.game-over):hover::after {
+            color: var(--o-color);
+            opacity: 0.22;
+        }
+
+        /* Pop-in animation for placed X / O SVG marks */
+        @keyframes markPopIn {
+            0% {
+                transform: scale(0.35) rotate(-12deg);
+                opacity: 0;
+            }
+            70% {
+                transform: scale(1.08) rotate(2deg);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        .mark-svg {
+            animation: markPopIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .mark-x {
+            stroke: var(--x-color);
+            filter: drop-shadow(0 0 10px var(--x-glow));
+        }
+
+        .mark-o {
+            stroke: var(--o-color);
+            filter: drop-shadow(0 0 10px var(--o-glow));
+        }
+
+        /* Winning Cell Highlight */
+        @keyframes winPulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.04);
+            }
+        }
+
+        .board-cell.win-x {
+            background: rgba(56, 189, 248, 0.16);
+            border-color: var(--x-color);
+            box-shadow: 0 0 24px rgba(56, 189, 248, 0.3);
+            animation: winPulse 1.4s ease-in-out infinite;
+        }
+
+        .board-cell.win-o {
+            background: rgba(244, 63, 94, 0.16);
+            border-color: var(--o-color);
+            box-shadow: 0 0 24px rgba(244, 63, 94, 0.3);
+            animation: winPulse 1.4s ease-in-out infinite;
+        }
+
+        /* Winning Strike Line Overlay */
+        .strike-line {
+            stroke-dasharray: 400;
+            stroke-dashoffset: 400;
+            animation: drawLine 0.45s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+        }
+
+        @keyframes drawLine {
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+
+        /* Game Buttons with Tactile Bubble/Gradient Effect */
+        .btn-primary {
+            background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
+            box-shadow: 0 6px 16px -2px rgba(2, 132, 199, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1.5px);
+            box-shadow: 0 10px 22px -2px rgba(56, 189, 248, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+        }
+
+        .btn-primary:active {
+            transform: translateY(1px) scale(0.98);
+        }
+
+        .btn-secondary {
+            background: rgba(51, 65, 85, 0.65);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(71, 85, 105, 0.8);
+            border-color: rgba(148, 163, 184, 0.35);
+            transform: translateY(-1.5px);
+        }
+
+        .btn-secondary:active {
+            transform: translateY(1px) scale(0.98);
+        }
+
+        /* Banner Slide-In Animation */
+        @keyframes bannerBounce {
+            0% { transform: scale(0.9); opacity: 0; }
+            60% { transform: scale(1.03); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .announcement-pop {
+            animation: bannerBounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-4 sm:p-6">
+
+    <!-- Main Centered Game Container -->
+    <main class="w-full max-w-md mx-auto flex flex-col gap-4 sm:gap-5">
+
+        <!-- Header & Sound Toggle -->
+        <header class="flex items-center justify-between px-1">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-slate-800/90 border border-slate-700/80 flex items-center justify-center shadow-inner">
+                    <span class="font-display font-extrabold text-sky-400 text-lg leading-none">X</span>
+                    <span class="font-display font-extrabold text-rose-500 text-lg leading-none -ml-0.5">O</span>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight text-white">Harshu - Shanku's Tic Tac Toe</h1>
+                    <p class="text-xs text-slate-400 font-medium">Smart kids from Chikhli</p>
+                    <!-- <p class="text-xs text-slate-400 font-medium">Classic Strategy</p> -->
+                </div>
+            </div>
+
+            <!-- Sound Toggle Button -->
+            <button id="soundToggleBtn" type="button" aria-label="Toggle Sound" title="Toggle Sound Effects"
+                class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/70 text-slate-300 transition active:scale-95">
+                <!-- Sound On Icon -->
+                <svg id="soundOnIcon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                </svg>
+                <!-- Sound Off Icon (Hidden initially) -->
+                <svg id="soundOffIcon" class="w-5 h-5 hidden text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+                </svg>
+            </button>
+        </header>
+
+        <!-- Game Glass Panel -->
+        <section class="glass-panel rounded-3xl p-4 sm:p-6 flex flex-col gap-4 sm:gap-5">
+
+            <!-- Mode Selector Toggle (vs AI / 2 Players) -->
+            <div class="relative grid grid-cols-2 p-1 rounded-2xl bg-slate-900/90 border border-slate-800">
+                <div id="modePill" class="mode-pill-bg absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-xl bg-slate-800 border border-slate-700/80 shadow-md"></div>
+                <button id="modeAiBtn" type="button"
+                    class="relative z-10 py-2 px-3 rounded-xl text-xs sm:text-sm font-semibold text-white flex items-center justify-center gap-1.5 transition-colors">
+                    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    <span>vs Smart AI</span>
+                </button>
+                <button id="modePvpBtn" type="button"
+                    class="relative z-10 py-2 px-3 rounded-xl text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-200 flex items-center justify-center gap-1.5 transition-colors">
+                    <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                    </svg>
+                    <span>2 Players</span>
+                </button>
+            </div>
+
+            <!-- Scoreboard Cards -->
+            <div class="grid grid-cols-3 gap-2.5 sm:gap-3">
+                <!-- Player X Score -->
+                <div id="cardX" class="rounded-2xl bg-slate-900/75 border border-sky-500/40 p-2.5 sm:p-3 text-center transition-all duration-300 shadow-[0_0_15px_rgba(56,189,248,0.12)]">
+                    <div id="labelX" class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-sky-400 truncate">You (X)</div>
+                    <div id="scoreX" class="font-display text-xl sm:text-2xl font-extrabold text-white mt-0.5">0</div>
+                </div>
+
+                <!-- Draws Score -->
+                <div id="cardDraw" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-2.5 sm:p-3 text-center transition-all duration-300">
+                    <div class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Draws</div>
+                    <div id="scoreDraw" class="font-display text-xl sm:text-2xl font-extrabold text-slate-200 mt-0.5">0</div>
+                </div>
+
+                <!-- Player O / AI Score -->
+                <div id="cardO" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-2.5 sm:p-3 text-center transition-all duration-300">
+                    <div id="labelO" class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-rose-400 truncate">AI (O)</div>
+                    <div id="scoreO" class="font-display text-xl sm:text-2xl font-extrabold text-white mt-0.5">0</div>
+                </div>
+            </div>
+
+            <!-- Turn Indicator & Victory/Draw Status Banner -->
+            <div id="statusBanner" class="min-h-[46px] rounded-2xl bg-slate-900/80 border border-slate-800/90 px-4 py-2.5 flex items-center justify-center gap-2 text-sm sm:text-base font-semibold transition-all duration-300">
+                <span id="statusIndicatorDot" class="w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse"></span>
+                <span id="statusText" class="text-slate-100">Player X's Turn</span>
+            </div>
+
+            <!-- 3x3 Interactive Game Board Container -->
+            <div class="relative w-full aspect-square max-w-[360px] mx-auto">
+                <div id="gameBoard" class="grid grid-cols-3 gap-2.5 sm:gap-3 w-full h-full" role="grid" aria-label="Tic Tac Toe Board">
+                    <!-- 9 Cells dynamically populated / wired via JS -->
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="0" data-preview="X" aria-label="Row 1, Column 1"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="1" data-preview="X" aria-label="Row 1, Column 2"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="2" data-preview="X" aria-label="Row 1, Column 3"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="3" data-preview="X" aria-label="Row 2, Column 1"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="4" data-preview="X" aria-label="Row 2, Column 2"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="5" data-preview="X" aria-label="Row 2, Column 3"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="6" data-preview="X" aria-label="Row 3, Column 1"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="7" data-preview="X" aria-label="Row 3, Column 2"></button>
+                    <button type="button" class="board-cell rounded-2xl flex items-center justify-center cursor-pointer" data-index="8" data-preview="X" aria-label="Row 3, Column 3"></button>
+                </div>
+
+                <!-- SVG Winning Strike-Through Line Overlay -->
+                <svg id="winLineOverlay" class="pointer-events-none absolute inset-0 w-full h-full hidden" viewBox="0 0 300 300">
+                    <line id="winLine" class="strike-line" x1="0" y1="0" x2="0" y2="0" stroke="#fbbf24" stroke-width="10" stroke-linecap="round" />
+                </svg>
+            </div>
+
+        </section>
+
+        <!-- Action Controls Outside the Board -->
+        <div class="grid grid-cols-2 gap-3 px-1">
+            <button id="restartRoundBtn" type="button"
+                class="btn-primary py-3 px-4 rounded-2xl text-slate-950 font-bold text-sm sm:text-base flex items-center justify-center gap-2 cursor-pointer">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span>Restart Round</span>
+            </button>
+
+            <button id="resetScoresBtn" type="button"
+                class="btn-secondary py-3 px-4 rounded-2xl text-slate-200 font-semibold text-sm sm:text-base flex items-center justify-center gap-2 cursor-pointer">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                <span>Reset Scores</span>
+            </button>
+        </div>
+
+    </main>
+
+    <script>
+        /**
+         * Tic Tac Toe — Interactive Game Engine
+         * Supports 2-Player Local Mode and Unbeatable Minimax AI Mode.
+         */
+        (function () {
+            // --- Game Configuration & Winning Combinations ---
+            const WIN_COMBINATIONS = [
+                { combo: [0, 1, 2], coords: [25, 50, 275, 50] },    // Top row
+                { combo: [3, 4, 5], coords: [25, 150, 275, 150] },  // Middle row
+                { combo: [6, 7, 8], coords: [25, 250, 275, 250] },  // Bottom row
+                { combo: [0, 3, 6], coords: [50, 25, 50, 275] },    // Left column
+                { combo: [1, 4, 7], coords: [150, 25, 150, 275] },  // Center column
+                { combo: [2, 5, 8], coords: [250, 25, 250, 275] },  // Right column
+                { combo: [0, 4, 8], coords: [30, 30, 270, 270] },    // Diagonal top-left to bottom-right
+                { combo: [2, 4, 6], coords: [270, 30, 30, 270] }     // Diagonal top-right to bottom-left
+            ];
+
+            // --- Application State ---
+            const state = {
+                board: Array(9).fill(null),
+                currentPlayer: 'X',
+                startingPlayer: 'X',
+                isVsAI: true,
+                gameActive: true,
+                aiThinking: false,
+                soundEnabled: true,
+                scores: { X: 0, O: 0, Draw: 0 }
+            };
+
+            // --- Cached DOM Elements ---
+            const cells = Array.from(document.querySelectorAll('.board-cell'));
+            const modeAiBtn = document.getElementById('modeAiBtn');
+            const modePvpBtn = document.getElementById('modePvpBtn');
+            const modePill = document.getElementById('modePill');
+            const labelX = document.getElementById('labelX');
+            const labelO = document.getElementById('labelO');
+            const scoreXEl = document.getElementById('scoreX');
+            const scoreOEl = document.getElementById('scoreO');
+            const scoreDrawEl = document.getElementById('scoreDraw');
+            const cardX = document.getElementById('cardX');
+            const cardO = document.getElementById('cardO');
+            const statusBanner = document.getElementById('statusBanner');
+            const statusText = document.getElementById('statusText');
+            const statusDot = document.getElementById('statusIndicatorDot');
+            const winLineOverlay = document.getElementById('winLineOverlay');
+            const winLine = document.getElementById('winLine');
+            const restartRoundBtn = document.getElementById('restartRoundBtn');
+            const resetScoresBtn = document.getElementById('resetScoresBtn');
+            const soundToggleBtn = document.getElementById('soundToggleBtn');
+            const soundOnIcon = document.getElementById('soundOnIcon');
+            const soundOffIcon = document.getElementById('soundOffIcon');
+
+            // --- Procedural Audio Engine (Tone.js) ---
+            let synth = null;
+            function playSound(type) {
+                if (!state.soundEnabled || typeof Tone === 'undefined') return;
+                try {
+                    if (Tone.context.state !== 'running') {
+                        Tone.start();
+                    }
+                    if (!synth) {
+                        synth = new Tone.PolySynth(Tone.Synth, {
+                            oscillator: { type: 'triangle' },
+                            envelope: { attack: 0.01, decay: 0.12, sustain: 0.05, release: 0.2 }
+                        }).toDestination();
+                        synth.volume.value = -10;
+                    }
+
+                    const now = Tone.now();
+                    if (type === 'X') {
+                        synth.triggerAttackRelease('E5', '16n', now);
+                    } else if (type === 'O') {
+                        synth.triggerAttackRelease('B4', '16n', now);
+                    } else if (type === 'win') {
+                        synth.triggerAttackRelease(['C5', 'E5', 'G5', 'C6'], '8n', now);
+                    } else if (type === 'draw') {
+                        synth.triggerAttackRelease(['D4', 'A3'], '8n', now);
+                    } else if (type === 'reset') {
+                        synth.triggerAttackRelease('G4', '32n', now);
+                    }
+                } catch (err) {
+                    // Fail silently if audio context is restricted
+                }
+            }
+
+            // --- SVG Mark Generators ---
+            function createMarkSVG(player) {
+                if (player === 'X') {
+                    return `
+                        <svg class="mark-svg mark-x w-3/5 h-3/5" viewBox="0 0 100 100" fill="none" stroke-width="12" stroke-linecap="round">
+                            <line x1="22" y1="22" x2="78" y2="78" />
+                            <line x1="78" y1="22" x2="22" y2="78" />
+                        </svg>
+                    `;
+                }
+                return `
+                    <svg class="mark-svg mark-o w-3/5 h-3/5" viewBox="0 0 100 100" fill="none" stroke-width="12" stroke-linecap="round">
+                        <circle cx="50" cy="50" r="30" />
+                    </svg>
+                `;
+            }
+
+            // --- UI Updaters ---
+            function updateScoreboardUI() {
+                scoreXEl.textContent = state.scores.X;
+                scoreOEl.textContent = state.scores.O;
+                scoreDrawEl.textContent = state.scores.Draw;
+
+                labelX.textContent = state.isVsAI ? 'You (X)' : 'Player X';
+                labelO.textContent = state.isVsAI ? 'AI (O)' : 'Player O';
+            }
+
+            function updateTurnHighlight() {
+                // Reset card highlight classes
+                cardX.classList.remove('border-sky-500/50', 'shadow-[0_0_15px_rgba(56,189,248,0.18)]', 'bg-slate-900/90');
+                cardO.classList.remove('border-rose-500/50', 'shadow-[0_0_15px_rgba(244,63,94,0.18)]', 'bg-slate-900/90');
+                cardX.classList.add('border-slate-800', 'bg-slate-900/60');
+                cardO.classList.add('border-slate-800', 'bg-slate-900/60');
+
+                if (!state.gameActive) return;
+
+                if (state.currentPlayer === 'X') {
+                    cardX.classList.remove('border-slate-800', 'bg-slate-900/60');
+                    cardX.classList.add('border-sky-500/50', 'shadow-[0_0_15px_rgba(56,189,248,0.18)]', 'bg-slate-900/90');
+                    statusDot.className = 'w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse';
+                    statusText.textContent = state.isVsAI ? "Your Turn (X)" : "Player X's Turn";
+                } else {
+                    cardO.classList.remove('border-slate-800', 'bg-slate-900/60');
+                    cardO.classList.add('border-rose-500/50', 'shadow-[0_0_15px_rgba(244,63,94,0.18)]', 'bg-slate-900/90');
+                    statusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse';
+                    statusText.textContent = state.isVsAI ? "AI is thinking..." : "Player O's Turn";
+                }
+
+                // Update hover preview letter on unoccupied cells
+                const previewChar = (state.isVsAI && state.currentPlayer === 'O') ? '' : state.currentPlayer;
+                cells.forEach((cell, idx) => {
+                    if (!state.board[idx]) {
+                        cell.setAttribute('data-preview', previewChar);
+                    }
+                });
+            }
+
+            function announceResult(winner, winObj) {
+                state.gameActive = false;
+                cells.forEach(cell => {
+                    cell.classList.add('game-over');
+                    cell.removeAttribute('data-preview');
+                });
+
+                statusBanner.classList.remove('announcement-pop');
+                void statusBanner.offsetWidth; // trigger reflow
+                statusBanner.classList.add('announcement-pop');
+
+                if (winner) {
+                    state.scores[winner]++;
+                    updateScoreboardUI();
+                    playSound('win');
+
+                    // Highlight winning cells
+                    winObj.combo.forEach(idx => {
+                        cells[idx].classList.add(winner === 'X' ? 'win-x' : 'win-o');
+                    });
+
+                    // Draw animated SVG line through winning triplet
+                    const [x1, y1, x2, y2] = winObj.coords;
+                    winLine.setAttribute('x1', x1);
+                    winLine.setAttribute('y1', y1);
+                    winLine.setAttribute('x2', x2);
+                    winLine.setAttribute('y2', y2);
+                    winLine.setAttribute('stroke', winner === 'X' ? '#38bdf8' : '#f43f5e');
+                    winLineOverlay.classList.remove('hidden');
+
+                    statusDot.className = `w-3 h-3 rounded-full ${winner === 'X' ? 'bg-sky-400' : 'bg-rose-500'}`;
+                    if (state.isVsAI) {
+                        statusText.textContent = winner === 'X' ? 'Victory! You Beat the AI!' : 'AI Wins This Round!';
+                    } else {
+                        statusText.textContent = `Victory! Player ${winner} Wins!`;
+                    }
+                } else {
+                    state.scores.Draw++;
+                    updateScoreboardUI();
+                    playSound('draw');
+
+                    statusDot.className = 'w-3 h-3 rounded-full bg-amber-400';
+                    statusText.textContent = "It's a Draw! Well Played!";
+                }
+            }
+
+            // --- Win & Draw Detection ---
+            function checkBoardState(boardSnapshot) {
+                for (const item of WIN_COMBINATIONS) {
+                    const [a, b, c] = item.combo;
+                    if (
+                        boardSnapshot[a] &&
+                        boardSnapshot[a] === boardSnapshot[b] &&
+                        boardSnapshot[a] === boardSnapshot[c]
+                    ) {
+                        return { winner: boardSnapshot[a], winObj: item };
+                    }
+                }
+                if (!boardSnapshot.includes(null)) {
+                    return { winner: null, isDraw: true };
+                }
+                return null;
+            }
+
+            // --- Unbeatable Minimax AI with Depth Scoring & Opening Variety ---
+            function getBestAIMove() {
+                const available = state.board
+                    .map((val, idx) => (val === null ? idx : null))
+                    .filter(val => val !== null);
+
+                // If board is completely empty (AI goes first), pick a strategic corner or center randomly for variety
+                if (available.length === 9) {
+                    const strategicStarts = [0, 2, 4, 6, 8];
+                    return strategicStarts[Math.floor(Math.random() * strategicStarts.length)];
+                }
+
+                let bestScore = -Infinity;
+                let bestMoves = [];
+
+                for (const idx of available) {
+                    state.board[idx] = 'O';
+                    const score = minimax(state.board, 0, false, -Infinity, Infinity);
+                    state.board[idx] = null;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMoves = [idx];
+                    } else if (score === bestScore) {
+                        bestMoves.push(idx);
+                    }
+                }
+
+                // Randomly choose among equally optimal moves so games feel natural
+                return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+            }
+
+            function minimax(boardState, depth, isMaximizing, alpha, beta) {
+                const outcome = checkBoardState(boardState);
+                if (outcome) {
+                    if (outcome.winner === 'O') return 10 - depth;
+                    if (outcome.winner === 'X') return depth - 10;
+                    return 0;
+                }
+
+                if (isMaximizing) {
+                    let maxEval = -Infinity;
+                    for (let i = 0; i < 9; i++) {
+                        if (boardState[i] === null) {
+                            boardState[i] = 'O';
+                            const evaluation = minimax(boardState, depth + 1, false, alpha, beta);
+                            boardState[i] = null;
+                            maxEval = Math.max(maxEval, evaluation);
+                            alpha = Math.max(alpha, evaluation);
+                            if (beta <= alpha) break;
+                        }
+                    }
+                    return maxEval;
+                } else {
+                    let minEval = Infinity;
+                    for (let i = 0; i < 9; i++) {
+                        if (boardState[i] === null) {
+                            boardState[i] = 'X';
+                            const evaluation = minimax(boardState, depth + 1, true, alpha, beta);
+                            boardState[i] = null;
+                            minEval = Math.min(minEval, evaluation);
+                            beta = Math.min(beta, evaluation);
+                            if (beta <= alpha) break;
+                        }
+                    }
+                    return minEval;
+                }
+            }
+
+            // --- Core Move Execution ---
+            function placeMark(index, player) {
+                if (!state.gameActive || state.board[index] !== null) return false;
+
+                state.board[index] = player;
+                const cell = cells[index];
+                cell.classList.add('occupied');
+                cell.removeAttribute('data-preview');
+                cell.innerHTML = createMarkSVG(player);
+                playSound(player);
+
+                const result = checkBoardState(state.board);
+                if (result) {
+                    announceResult(result.winner, result.winObj);
+                    return true;
+                }
+
+                state.currentPlayer = player === 'X' ? 'O' : 'X';
+                updateTurnHighlight();
+                return true;
+            }
+
+            function triggerAITurn() {
+                if (!state.gameActive || !state.isVsAI || state.currentPlayer !== 'O') return;
+                state.aiThinking = true;
+
+                setTimeout(() => {
+                    if (!state.gameActive || !state.isVsAI || state.currentPlayer !== 'O') {
+                        state.aiThinking = false;
+                        return;
+                    }
+                    const moveIndex = getBestAIMove();
+                    state.aiThinking = false;
+                    if (moveIndex !== undefined) {
+                        placeMark(moveIndex, 'O');
+                    }
+                }, 360);
+            }
+
+            // --- Round & Score Reset Handlers ---
+            function startNewRound(alternateStarter = false) {
+                if (alternateStarter) {
+                    state.startingPlayer = state.startingPlayer === 'X' ? 'O' : 'X';
+                }
+                state.board = Array(9).fill(null);
+                state.currentPlayer = state.startingPlayer;
+                state.gameActive = true;
+                state.aiThinking = false;
+
+                winLineOverlay.classList.add('hidden');
+                statusBanner.classList.remove('announcement-pop');
+
+                cells.forEach(cell => {
+                    cell.innerHTML = '';
+                    cell.classList.remove('occupied', 'game-over', 'win-x', 'win-o');
+                    cell.setAttribute('data-preview', state.currentPlayer);
+                });
+
+                updateTurnHighlight();
+
+                if (state.isVsAI && state.currentPlayer === 'O') {
+                    triggerAITurn();
+                }
+            }
+
+            function switchGameMode(vsAI) {
+                if (state.isVsAI === vsAI) return;
+                state.isVsAI = vsAI;
+                state.scores = { X: 0, O: 0, Draw: 0 };
+                state.startingPlayer = 'X';
+
+                if (vsAI) {
+                    modePill.style.transform = 'translateX(0%)';
+                    modeAiBtn.classList.replace('text-slate-400', 'text-white');
+                    modePvpBtn.classList.replace('text-white', 'text-slate-400');
+                } else {
+                    modePill.style.transform = 'translateX(100%)';
+                    modePvpBtn.classList.replace('text-slate-400', 'text-white');
+                    modeAiBtn.classList.replace('text-white', 'text-slate-400');
+                }
+
+                playSound('reset');
+                updateScoreboardUI();
+                startNewRound(false);
+            }
+
+            // --- Event Listeners ---
+            cells.forEach((cell, index) => {
+                cell.addEventListener('click', () => {
+                    if (!state.gameActive || state.aiThinking) return;
+                    if (state.isVsAI && state.currentPlayer === 'O') return;
+
+                    const moved = placeMark(index, state.currentPlayer);
+                    if (moved && state.gameActive && state.isVsAI && state.currentPlayer === 'O') {
+                        triggerAITurn();
+                    }
+                });
+            });
+
+            modeAiBtn.addEventListener('click', () => switchGameMode(true));
+            modePvpBtn.addEventListener('click', () => switchGameMode(false));
+
+            restartRoundBtn.addEventListener('click', () => {
+                playSound('reset');
+                // Alternate who starts next round when round was completed
+                const shouldAlternate = !state.gameActive;
+                startNewRound(shouldAlternate);
+            });
+
+            resetScoresBtn.addEventListener('click', () => {
+                playSound('reset');
+                state.scores = { X: 0, O: 0, Draw: 0 };
+                state.startingPlayer = 'X';
+                updateScoreboardUI();
+                startNewRound(false);
+            });
+
+            soundToggleBtn.addEventListener('click', () => {
+                state.soundEnabled = !state.soundEnabled;
+                soundOnIcon.classList.toggle('hidden', !state.soundEnabled);
+                soundOffIcon.classList.toggle('hidden', state.soundEnabled);
+                if (state.soundEnabled) playSound('reset');
+            });
+
+            // Initialize Game UI on load
+            updateScoreboardUI();
+            startNewRound(false);
+        })();
+    </script>
+</body>
+</html>
