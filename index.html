@@ -287,7 +287,7 @@
 
                 <!-- Player O / AI Score -->
                 <div id="cardO" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-2.5 sm:p-3 text-center transition-all duration-300">
-                    <div id="labelO" class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-rose-400 truncate">AI (O)</div>
+                    <div id="labelO" class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-rose-400 truncate">Smart Harshu (O)</div>
                     <div id="scoreO" class="font-display text-xl sm:text-2xl font-extrabold text-white mt-0.5">0</div>
                 </div>
             </div>
@@ -452,7 +452,7 @@
                 scoreDrawEl.textContent = state.scores.Draw;
 
                 labelX.textContent = state.isVsAI ? 'You (X)' : 'Player X';
-                labelO.textContent = state.isVsAI ? 'AI (O)' : 'Player O';
+                labelO.textContent = state.isVsAI ? 'Harshu (O)' : 'Player O';
             }
 
             function updateTurnHighlight() {
@@ -473,7 +473,7 @@
                     cardO.classList.remove('border-slate-800', 'bg-slate-900/60');
                     cardO.classList.add('border-rose-500/50', 'shadow-[0_0_15px_rgba(244,63,94,0.18)]', 'bg-slate-900/90');
                     statusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse';
-                    statusText.textContent = state.isVsAI ? "AI is thinking..." : "Player O's Turn";
+                    statusText.textContent = state.isVsAI ? "Harshu is thinking..." : "Player O's Turn";
                 }
 
                 // Update hover preview letter on unoccupied cells
@@ -517,7 +517,7 @@
 
                     statusDot.className = `w-3 h-3 rounded-full ${winner === 'X' ? 'bg-sky-400' : 'bg-rose-500'}`;
                     if (state.isVsAI) {
-                        statusText.textContent = winner === 'X' ? 'Victory! You Beat the AI!' : 'AI Wins This Round!';
+                        statusText.textContent = winner === 'X' ? 'Victory! You Beat the Harshu!' : 'Harshu Wins This Round!';
                     } else {
                         statusText.textContent = `Victory! Player ${winner} Wins!`;
                     }
